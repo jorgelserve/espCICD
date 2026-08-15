@@ -10,13 +10,15 @@
 #include <SGO_Provisioning.h>
 #include <stdarg.h>
 
-const char *FW_VERSION = "0.2.6";
+const char *FW_VERSION = "0.3.0";
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 // esp32oled-ci: WiFi provisioning portal (like esp32ToneHub) + OLED status.
 // No saved network (or all fail) -> AP "esp32oled-ci" with captive portal at
 // 192.168.4.1: scan, pick your network, type the password, save. Up to 5
-// profiles in NVS, tried in slot order (slot 0 = home, slot 1 = hotspot...).
+// profiles in NVS; on connect the STRONGEST visible signal wins (scan +
+// RSSI sort, slot order is irrelevant). Profiles not visible in the scan
+// (hidden SSIDs) are still tried last as fallback.
 
 const char *AP_SSID = "esp32oled-ci";
 const char *AP_PASSWORD = "esp32oled123";
@@ -67,6 +69,7 @@ class WifiManager {
   String g_mode = "boot";    // sta | prov
   String g_ssid = "-";
   String g_ip = "0.0.0.0";
+  static bool rssiBetterThan(int32_t a, int32_t b) { return a > b; }
 };
 
 class TelnetLogger {
@@ -201,11 +204,52 @@ bool WifiManager::begin() {
 
 bool WifiManager::tryProfiles() {
   WiFi.mode(WIFI_STA);
+
+  // Scan once, then order saved profiles by signal strength: the strongest
+  // visible network wins, slot order is irrelevant. Hidden/absent profiles
+  // are appended at the end as fallback.
+  logger.print("scanning networks...\n");
+  const int found = WiFi.scanNetworks();
+  logger.print("scan found %d network(s)\n", found);
+
+  struct Candidate {
+    uint8_t slot;
+    int32_t rssi;
+  };
+  Candidate order[kMaxProfiles];
+  uint8_t count = 0;
+
   for (uint8_t i = 0; i < kMaxProfiles; ++i) {
     const String ssid = slotSsid(i);
     if (!ssid.length()) continue;
-    oled.show("wifi", ssid);
-    logger.print("trying %s", ssid.c_str());
+    int32_t rssi = INT32_MIN;  // not visible in scan -> fallback tier
+    for (int j = 0; j < found; ++j) {
+      if (WiFi.SSID(j) == ssid) {
+        rssi = WiFi.RSSI(j);
+        break;
+      }
+    }
+    // insert sorted by RSSI descending
+    uint8_t pos = count;
+    while (pos > 0 && rssiBetterThan(rssi, order[pos - 1].rssi)) {
+      order[pos] = order[pos - 1];
+      pos--;
+    }
+    order[pos] = {i, rssi};
+    count++;
+    logger.print("known: %s (%s)\n", ssid.c_str(),
+                 rssi > INT32_MIN ? (String(rssi) + " dBm").c_str() : "not visible");
+  }
+  WiFi.scanDelete();
+
+  for (uint8_t k = 0; k < count; ++k) {
+    const uint8_t i = order[k].slot;
+    const String ssid = slotSsid(i);
+    oled.show("wifi", ssid,
+              order[k].rssi > INT32_MIN ? String(order[k].rssi) + " dBm" : "");
+    logger.print("trying %s (%s)...\n", ssid.c_str(),
+                 (order[k].rssi > INT32_MIN ? String(order[k].rssi) + " dBm"
+                                            : String("fallback")).c_str());
     WiFi.begin(ssid.c_str(), slotPass(i).c_str());
     const uint32_t start = millis();
     while (millis() - start < kWifiTimeoutMs) {
