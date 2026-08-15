@@ -38,6 +38,7 @@ class OledDisplay {
   U8G2_SSD1306_72X40_ER_F_HW_I2C display{U8G2_R0, U8X8_PIN_NONE, 6, 5};
   String lines[3];
   uint8_t scrollOff[3] = {0, 0, 0};
+  int8_t scrollDir[3] = {1, 1, 1};
 };
 
 class WifiManager {
@@ -120,12 +121,18 @@ void OledDisplay::show(const String &l1, const String &l2, const String &l3) {
     if (s != lines[i]) {  // new content: restart that line's scroll
       lines[i] = s;
       scrollOff[i] = 0;
+      scrollDir[i] = 1;
     }
     if (!s.length()) continue;
     display.drawUTF8(0, 10 + 10 * i, s.substring(scrollOff[i], scrollOff[i] + kOledCols).c_str());
     if (s.length() > kOledCols) {
       const uint8_t maxOff = s.length() - kOledCols;
-      scrollOff[i] = scrollOff[i] >= maxOff ? 0 : scrollOff[i] + 1;
+      if (scrollOff[i] >= maxOff) {
+        scrollDir[i] = -1;
+      } else if (scrollOff[i] == 0) {
+        scrollDir[i] = 1;
+      }
+      scrollOff[i] += scrollDir[i];
     }
   }
   display.sendBuffer();
