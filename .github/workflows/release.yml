@@ -1,22 +1,23 @@
-name: release
+name: esp32oled-ci build and release
 
 on:
   push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  release:
+  build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Install PlatformIO
         run: pip install platformio
@@ -25,7 +26,45 @@ jobs:
         working-directory: firmware
         run: pio run
 
-      - name: Publish GitHub Release
+      - name: Extract FW_VERSION
+        id: version
+        run: |
+          VERSION=$(grep -oP 'const char \*FW_VERSION = "\K[^"]+' firmware/src/main.cpp || true)
+          if [ -z "$VERSION" ]; then
+            echo "No se pudo extraer FW_VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag exists
+        id: checktag
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create tag and push
+        if: steps.checktag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create GitHub Release
+        if: steps.checktag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          files: firmware/.pio/build/esp32oled-ci/firmware.bin
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          files: |
+            firmware/.pio/build/esp32oled-ci/firmware.bin
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
