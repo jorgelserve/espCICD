@@ -1,0 +1,62 @@
+#######################################
+# Syntax Coloring Map for SafeGithubOTA
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+SafeGithubOTA	KEYWORD1
+SGO_Error	KEYWORD1
+SGO_UpdateInfo	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+setVersion	KEYWORD2
+begin	KEYWORD2
+loop	KEYWORD2
+checkAndUpdate	KEYWORD2
+checkForUpdate	KEYWORD2
+applyUpdate	KEYWORD2
+startProvisioningPortal	KEYWORD2
+isProvisioned	KEYWORD2
+clearCredentials	KEYWORD2
+onUpdateAvailable	KEYWORD2
+onProgress	KEYWORD2
+onValidation	KEYWORD2
+onLog	KEYWORD2
+setAutoCheckInterval	KEYWORD2
+setConnectTimeout	KEYWORD2
+setDownloadTimeout	KEYWORD2
+setPatRequired	KEYWORD2
+getPatRequired	KEYWORD2
+confirmFirmware	KEYWORD2
+rollback	KEYWORD2
+isPendingVerification	KEYWORD2
+wasRolledBack	KEYWORD2
+getVersion	KEYWORD2
+getLastError	KEYWORD2
+getLastErrorCode	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+OK	LITERAL1
+NOT_PROVISIONED	LITERAL1
+WIFI_NOT_CONNECTED	LITERAL1
+CONNECT_FAILED	LITERAL1
+HTTP_ERROR	LITERAL1
+JSON_PARSE_ERROR	LITERAL1
+NO_MATCHING_ASSET	LITERAL1
+ALREADY_CURRENT	LITERAL1
+DOWNLOAD_FAILED	LITERAL1
+UPDATE_BEGIN_FAILED	LITERAL1
+UPDATE_WRITE_FAILED	LITERAL1
+UPDATE_END_FAILED	LITERAL1
+ROLLBACK_FAILED	LITERAL1
+VALIDATION_FAILED	LITERAL1
+REDIRECT_FAILED	LITERAL1
+TIMEOUT	LITERAL1
