@@ -10,7 +10,7 @@
 #include <SGO_Provisioning.h>
 #include <stdarg.h>
 
-const char *FW_VERSION = "0.3.0";
+const char *FW_VERSION = "0.3.1";
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 // esp32oled-ci: WiFi provisioning portal (like esp32ToneHub) + OLED status.
@@ -370,19 +370,13 @@ button{padding:10px 18px}a{color:#0366d6}small{color:#666}
   html += "<h3>Configure</h3><form method='POST' action='/save'>";
   html += "<small>SSID</small><input name='ssid' id='ssid' value='" + server.arg("ssid") + "' required>";
   html += "<small>Password (empty for open)</small><input name='pass' type='password'>";
-  html += "<small>Slot</small><select name='slot'>";
-  for (uint8_t i = 0; i < kMaxProfiles; ++i) {
-    const String saved = WifiManager::slotSsid(i);
-    html += "<option value='" + String(i) + "'>slot " + String(i) +
-            (saved.length() ? ": " + saved : ": empty") + "</option>";
-  }
-  html += "</select><br><br><button type='submit'>Save &amp; connect</button></form>";
+  html += "<br><br><button type='submit'>Save &amp; connect</button></form>";
 
-  html += "<h3>Saved</h3><ul>";
+  html += "<h3>Saved</h3><p><small>connects automatically to the strongest signal</small></p><ul>";
   for (uint8_t i = 0; i < kMaxProfiles; ++i) {
     const String saved = WifiManager::slotSsid(i);
     if (saved.length()) {
-      html += "<li>slot " + String(i) + ": " + saved +
+      html += "<li>" + saved +
               " <a href='/forget?i=" + String(i) + "'>forget</a></li>";
     }
   }
@@ -405,7 +399,7 @@ void WebPortal::begin() {
       const String ssid = WifiManager::slotSsid(i);
       if (ssid.length()) {
         if (!first) body += ",";
-        body += "{\"slot\":" + String(i) + ",\"ssid\":\"" + ssid + "\"}";
+        body += "{\"ssid\":\"" + ssid + "\"}";
         first = false;
       }
     }
@@ -416,10 +410,24 @@ void WebPortal::begin() {
   server.on("/save", HTTP_POST, [this] {
     const String ssid = server.arg("ssid");
     const String pass = server.arg("pass");
-    long slot = 0;
-    if (server.hasArg("slot")) slot = server.arg("slot").toInt();
-    if (!ssid.length() || slot < 0 || slot >= kMaxProfiles) {
+    if (!ssid.length()) {
       server.send(400, "text/plain", "bad request");
+      return;
+    }
+    // Auto-assign: update if SSID already saved, else first free slot.
+    int slot = -1;
+    for (uint8_t i = 0; i < kMaxProfiles && slot < 0; ++i) {
+      if (WifiManager::slotSsid(i) == ssid) slot = i;
+    }
+    if (slot < 0) {
+      for (uint8_t i = 0; i < kMaxProfiles && slot < 0; ++i) {
+        if (!WifiManager::slotSsid(i).length()) slot = i;
+      }
+    }
+    if (slot < 0) {
+      server.send(200, "text/html",
+                  "Profile list full (" + String(kMaxProfiles) +
+                      "). <a href='/'>Forget one and retry</a>.");
       return;
     }
     WifiManager::saveSlot(static_cast<uint8_t>(slot), ssid, pass);
