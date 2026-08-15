@@ -10,7 +10,7 @@
 #include <SGO_Provisioning.h>
 #include <stdarg.h>
 
-const char *FW_VERSION = "0.2.2";
+const char *FW_VERSION = "0.2.4";
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 // esp32oled-ci: WiFi provisioning portal (like esp32ToneHub) + OLED status.

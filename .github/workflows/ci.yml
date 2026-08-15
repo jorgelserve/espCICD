@@ -8,14 +8,43 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install platformio
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
       - name: Build firmware
         working-directory: firmware
         run: pio run
+
+      - name: Validate FW_VERSION matches latest tag
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP 'const char \*FW_VERSION = "\K[^"]+' firmware/src/main.cpp || true)
+          if [ -z "$VERSION" ]; then
+            echo "No se pudo extraer FW_VERSION"
+            exit 1
+          fi
+          TAG="v$VERSION"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::warning::No existe release $TAG para FW_VERSION=$VERSION"
+          else
+            echo "Release $TAG encontrada para FW_VERSION=$VERSION"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check firmware artifact exists
+        run: |
+          if [ ! -f firmware/.pio/build/esp32oled-ci/firmware.bin ]; then
+            echo "firmware.bin no fue generado"
+            exit 1
+          fi
+          echo "firmware.bin listo para OTA manual o release"
