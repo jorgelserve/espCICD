@@ -28,6 +28,7 @@ const uint32_t kWifiTimeoutMs = 10000;
 const uint16_t kTelnetPort = 23;
 const uint8_t kOledCols = 12;  // visible chars: 72 px / 6 px font
 const uint16_t kScrollStepMs = 70;  // 1 px per tick -> smooth linear scroll
+const uint8_t kScrollPauseTicks = 10;  // ~700 ms pause at edges
 
 class OledDisplay {
  public:
@@ -42,7 +43,8 @@ class OledDisplay {
   String lines[3];
   uint16_t scrollOff[3] = {0, 0, 0};  // px into the line
   uint16_t textW[3] = {0, 0, 0};      // line width in px
-  int8_t scrollDir[3] = {1, 1, 1};    // linear scroll: always leftwards
+  int16_t scrollDir[3] = {1, 1, 1};   // 1 = advancing, -1 = rewinding
+  uint8_t scrollPause[3] = {0, 0, 0}; // ticks to wait at extremes
   uint32_t lastScrollMs = 0;
 };
 
@@ -128,13 +130,13 @@ void OledDisplay::show(const String &l1, const String &l2, const String &l3) {
     lines[i] = s;
     scrollOff[i] = 0;
     scrollDir[i] = 1;
+    scrollPause[i] = 0;
     textW[i] = s.length() ? display.getUTF8Width(s.c_str()) : 0;
   }
   render();
 }
 
-// Continuous linear scroll: 1 px every kScrollStepMs, restart at the end.
-// u8g2 clips negative x, so the line is drawn whole and shifted left.
+// Smooth scroll: 1 px every kScrollStepMs, with pause at edges.
 void OledDisplay::loop() {
   if (millis() - lastScrollMs < kScrollStepMs) return;
   lastScrollMs = millis();
@@ -143,10 +145,19 @@ void OledDisplay::loop() {
   for (uint8_t i = 0; i < 3; ++i) {
     if (lines[i].length() <= kOledCols || textW[i] <= width) continue;
     const uint16_t maxOff = textW[i] - width;
-    if (scrollOff[i] < maxOff) {
-      scrollOff[i] += scrollDir[i];
+    if (scrollPause[i] > 0) {
+      scrollPause[i]--;
+      moved = true;
+      continue;
+    }
+    if (scrollDir[i] > 0 && scrollOff[i] >= maxOff) {
+      scrollDir[i] = -1;
+      scrollPause[i] = kScrollPauseTicks;
+    } else if (scrollDir[i] < 0 && scrollOff[i] <= 0) {
+      scrollDir[i] = 1;
+      scrollPause[i] = kScrollPauseTicks;
     } else {
-      scrollOff[i] = 0;
+      scrollOff[i] = scrollOff[i] + scrollDir[i];
     }
     moved = true;
   }
