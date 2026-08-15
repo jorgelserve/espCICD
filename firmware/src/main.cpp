@@ -27,18 +27,23 @@ const uint8_t kMaxProfiles = 5;
 const uint32_t kWifiTimeoutMs = 10000;
 const uint16_t kTelnetPort = 23;
 const uint8_t kOledCols = 12;  // visible chars: 72 px / 6 px font
+const uint16_t kScrollStepMs = 70;  // 1 px per tick -> smooth linear scroll
 
 class OledDisplay {
  public:
   void begin();
   void show(const String &l1, const String &l2, const String &l3 = "");
   void renderStatus(const String &mode, const String &ssid, const String &ip);
+  void loop();
 
  private:
+  void render();
   U8G2_SSD1306_72X40_ER_F_HW_I2C display{U8G2_R0, U8X8_PIN_NONE, 6, 5};
   String lines[3];
-  uint8_t scrollOff[3] = {0, 0, 0};
-  int8_t scrollDir[3] = {1, 1, 1};
+  uint16_t scrollOff[3] = {0, 0, 0};  // px into the line
+  uint16_t textW[3] = {0, 0, 0};      // line width in px
+  int8_t scrollDir[3] = {1, 1, 1};    // linear scroll: always leftwards
+  uint32_t lastScrollMs = 0;
 };
 
 class WifiManager {
@@ -110,30 +115,49 @@ GitHubUpdater updater;
 
 // ********** OledDisplay **********
 
-void OledDisplay::begin() { display.begin(); }
+void OledDisplay::begin() {
+  display.begin();
+  display.setFont(u8g2_font_6x10_tf);
+}
 
 void OledDisplay::show(const String &l1, const String &l2, const String &l3) {
   const String *in[3] = {&l1, &l2, &l3};
-  display.clearBuffer();
-  display.setFont(u8g2_font_6x10_tf);
   for (uint8_t i = 0; i < 3; ++i) {
     const String &s = *in[i];
-    if (s != lines[i]) {  // new content: restart that line's scroll
-      lines[i] = s;
-      scrollOff[i] = 0;
-      scrollDir[i] = 1;
-    }
-    if (!s.length()) continue;
-    display.drawUTF8(0, 10 + 10 * i, s.substring(scrollOff[i], scrollOff[i] + kOledCols).c_str());
-    if (s.length() > kOledCols) {
-      const uint8_t maxOff = s.length() - kOledCols;
-      if (scrollOff[i] >= maxOff) {
-        scrollDir[i] = -1;
-      } else if (scrollOff[i] == 0) {
-        scrollDir[i] = 1;
-      }
+    if (s == lines[i]) continue;  // new content: restart that line's scroll
+    lines[i] = s;
+    scrollOff[i] = 0;
+    scrollDir[i] = 1;
+    textW[i] = s.length() ? display.getUTF8Width(s.c_str()) : 0;
+  }
+  render();
+}
+
+// Continuous linear scroll: 1 px every kScrollStepMs, restart at the end.
+// u8g2 clips negative x, so the line is drawn whole and shifted left.
+void OledDisplay::loop() {
+  if (millis() - lastScrollMs < kScrollStepMs) return;
+  lastScrollMs = millis();
+  const uint16_t width = display.getWidth();
+  bool moved = false;
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (lines[i].length() <= kOledCols || textW[i] <= width) continue;
+    const uint16_t maxOff = textW[i] - width;
+    if (scrollOff[i] < maxOff) {
       scrollOff[i] += scrollDir[i];
+    } else {
+      scrollOff[i] = 0;
     }
+    moved = true;
+  }
+  if (moved) render();
+}
+
+void OledDisplay::render() {
+  display.clearBuffer();
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (!lines[i].length()) continue;
+    display.drawUTF8(-static_cast<int16_t>(scrollOff[i]), 10 + 10 * i, lines[i].c_str());
   }
   display.sendBuffer();
 }
@@ -455,6 +479,7 @@ void loop() {
   portal.handleClient();
   updater.loop();
   wifi.loop();
+  oled.loop();
 
   if (logger.isConnected()) {
     while (logger.isConnected() && logger.available()) {
