@@ -1,31 +1,30 @@
 # esp32oledCI
 
-Deployment client for ESP32-C3 firmware releases published on GitHub. It
-downloads a firmware package from `jorgelserve/espCICD` (or a configured
-repository), verifies its manifest and SHA-256 digest, and prepares it for
-deployment. USB flashing, serial verification, and OTA are later phases; this
-repository currently implements release acquisition and package verification
-only.
+ESP32-C3 firmware that updates itself from GitHub Releases. The device only
+needs Wi-Fi: it polls `jorgelserve/espCICD` releases, compares semver tags,
+downloads `firmware.bin` and flashes it over OTA — no PC, no cables.
 
-## Repository boundaries
+## What runs on the device (`firmware/`)
 
-- `esp32oledCI` **consumes** firmware releases. It does not implement the
-  firmware network stack, Wi-Fi provisioning, BLE, or SoftAP.
-- `/home/jlsernav/hardware/esp32ToneHub` and `jorgelserve/esp32oled` are
-  read-only firmware references. This client never modifies them.
-- GitHub source archives (`zip`/`tar.gz`) are never treated as firmware.
+- **OledDisplay** — status UI (mode, SSID, IP).
+- **WifiManager** — up to 5 Wi-Fi profiles in NVS; if none connect, starts AP
+  `esp32oled-ci` with a captive portal at `192.168.4.1`.
+- **WebPortal** — scan/pick/save networks, status JSON, HTTP OTA endpoint.
+- **TelnetLogger** — logs and commands (`check`, `status`) on port 23.
+- **GitHubUpdater** — [SafeGithubOTA](firmware/lib/SafeGithubOTA)-based
+  pull OTA (vendored; public repo, no PAT). Auto-check every 6 h.
 
-The firmware must declare its capabilities in a release manifest. See
-[docs/firmware-contract.md](docs/firmware-contract.md) and
-[docs/threat-model.md](docs/threat-model.md).
+## CI/CD (`.github/workflows/`)
 
-## Development
-
-Requires Python 3.11 and [uv](https://docs.astral.sh/uv/).
+- `ci.yml` — builds the firmware on every push/PR to `main`.
+- `release.yml` — on tag `vX.Y.Z`, builds and publishes `firmware.bin` as a
+  GitHub Release; the device picks it up on its next check.
 
 ```bash
-uv sync
-uv run pytest -q
-uv run ruff check .
-uv run esp32oled-ci --help
+cd firmware
+pio run          # build
+pio run -t upload  # flash over USB
 ```
+
+See [docs/firmware-contract.md](docs/firmware-contract.md) and
+[docs/threat-model.md](docs/threat-model.md).
