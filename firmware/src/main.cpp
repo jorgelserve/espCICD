@@ -26,6 +26,7 @@ const IPAddress AP_SUBNET(255, 255, 255, 0);
 const uint8_t kMaxProfiles = 5;
 const uint32_t kWifiTimeoutMs = 10000;
 const uint16_t kTelnetPort = 23;
+const uint8_t kOledCols = 12;  // visible chars: 72 px / 6 px font
 
 class OledDisplay {
  public:
@@ -34,8 +35,9 @@ class OledDisplay {
   void renderStatus(const String &mode, const String &ssid, const String &ip);
 
  private:
-  static String fit12(const String &s);
   U8G2_SSD1306_72X40_ER_F_HW_I2C display{U8G2_R0, U8X8_PIN_NONE, 6, 5};
+  String lines[3];
+  uint8_t scrollOff[3] = {0, 0, 0};
 };
 
 class WifiManager {
@@ -107,16 +109,25 @@ GitHubUpdater updater;
 
 // ********** OledDisplay **********
 
-String OledDisplay::fit12(const String &s) { return s.length() <= 12 ? s : s.substring(0, 12); }
-
 void OledDisplay::begin() { display.begin(); }
 
 void OledDisplay::show(const String &l1, const String &l2, const String &l3) {
+  const String *in[3] = {&l1, &l2, &l3};
   display.clearBuffer();
   display.setFont(u8g2_font_6x10_tf);
-  display.drawUTF8(0, 10, fit12(l1).c_str());
-  display.drawUTF8(0, 20, fit12(l2).c_str());
-  if (l3.length()) display.drawUTF8(0, 30, fit12(l3).c_str());
+  for (uint8_t i = 0; i < 3; ++i) {
+    const String &s = *in[i];
+    if (s != lines[i]) {  // new content: restart that line's scroll
+      lines[i] = s;
+      scrollOff[i] = 0;
+    }
+    if (!s.length()) continue;
+    display.drawUTF8(0, 10 + 10 * i, s.substring(scrollOff[i], scrollOff[i] + kOledCols).c_str());
+    if (s.length() > kOledCols) {
+      const uint8_t maxOff = s.length() - kOledCols;
+      scrollOff[i] = scrollOff[i] >= maxOff ? 0 : scrollOff[i] + 1;
+    }
+  }
   display.sendBuffer();
 }
 
